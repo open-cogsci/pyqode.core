@@ -14,6 +14,8 @@ from pyqode.core import __version__
 #   - pyqode-uic
 #
 import sys
+# Disable unit tests on local system when using stdeb3. This does not disable
+# tests on the launchpad build machines.
 import os
 os.environ['DEB_BUILD_OPTIONS'] = 'nocheck'
 
@@ -82,7 +84,7 @@ setup(
     entry_points={
         'console_scripts': [
             'pyqode-console = pyqode.core.tools.console:main'
-        ],
+        ] if sys.version_info[0] > 2 else [],  # To avoid Py2 v Py3 conflicts
         'pyqode_plugins':
             ['code_edit = pyqode.core._designer_plugins'],
         'pygments.styles':
