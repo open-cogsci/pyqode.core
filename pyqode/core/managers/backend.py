@@ -38,7 +38,7 @@ class BackendManager(Manager):
     """
     LAST_PORT = None
     LAST_PROCESS = None
-    SHARE_COUNT = 0
+    SHARE_COUNT = {}
 
     def __init__(self, editor):
         super(BackendManager, self).__init__(editor)
@@ -63,7 +63,7 @@ class BackendManager(Manager):
         return free_port
 
     def start(self, script, interpreter=sys.executable, args=None,
-              error_callback=None, reuse=False):
+              error_callback=None, reuse=False, share_id=None):
         """
         Starts the backend process.
 
@@ -90,40 +90,46 @@ class BackendManager(Manager):
             single script, otherwise the wrong script might be picked up).
         """
         self._shared = reuse
-        if reuse and BackendManager.SHARE_COUNT:
+        self._share_id = share_id
+        if self._share_id not in BackendManager.SHARE_COUNT:
+            BackendManager.SHARE_COUNT[self._share_id] = []
+        # If we want to re-use existing backends, and a backend process is
+        # already running, re-use it. We register the editor, so that we
+        # can know, later on, if the backend was already stopped for this
+        # editor, in case the editor is closed multiple times.
+        if reuse and BackendManager.SHARE_COUNT[self._share_id]:
             self._port = BackendManager.LAST_PORT
             self._process = BackendManager.LAST_PROCESS
-            BackendManager.SHARE_COUNT += 1
+            BackendManager.SHARE_COUNT[self._share_id].append(self._editor)
+            return
+        if self.running:
+            self.stop()
+        self.server_script = script
+        self.interpreter = interpreter
+        self.args = args
+        backend_script = script.replace('.pyc', '.py')
+        self._port = self.pick_free_port()
+        if hasattr(sys, "frozen") and not backend_script.endswith('.py'):
+            # frozen backend script on windows/mac does not need an
+            # interpreter
+            program = backend_script
+            pgm_args = [str(self._port)]
         else:
-            if self.running:
-                self.stop()
-            self.server_script = script
-            self.interpreter = interpreter
-            self.args = args
-            backend_script = script.replace('.pyc', '.py')
-            self._port = self.pick_free_port()
-            if hasattr(sys, "frozen") and not backend_script.endswith('.py'):
-                # frozen backend script on windows/mac does not need an
-                # interpreter
-                program = backend_script
-                pgm_args = [str(self._port)]
-            else:
-                program = interpreter
-                pgm_args = [backend_script, str(self._port)]
-            if args:
-                pgm_args += args
-            self._process = BackendProcess(self.editor)
-            if error_callback:
-                self._process.error.connect(error_callback)
-            self._process.start(program, pgm_args)
-
-            if reuse:
-                BackendManager.LAST_PROCESS = self._process
-                BackendManager.LAST_PORT = self._port
-                BackendManager.SHARE_COUNT += 1
-            comm('starting backend process: %s %s', program,
-                 ' '.join(pgm_args))
-            self._heartbeat_timer.start()
+            program = interpreter
+            pgm_args = [backend_script, str(self._port)]
+        if args:
+            pgm_args += args
+        self._process = BackendProcess(self.editor)
+        if error_callback:
+            self._process.error.connect(error_callback)
+        self._process.start(program, pgm_args)
+        if reuse:
+            BackendManager.LAST_PROCESS = self._process
+            BackendManager.LAST_PORT = self._port
+            BackendManager.SHARE_COUNT[self._share_id].append(self._editor)
+        comm('starting backend process: %s %s', program,
+             ' '.join(pgm_args))
+        self._heartbeat_timer.start()
 
     def stop(self):
         """
@@ -132,8 +138,12 @@ class BackendManager(Manager):
         if self._process is None:
             return
         if self._shared:
-            BackendManager.SHARE_COUNT -= 1
-            if BackendManager.SHARE_COUNT:
+            # Remove the current editor from the list of editors that are using
+            # this shared backend
+            if self._editor in BackendManager.SHARE_COUNT[self._share_id]:
+                BackendManager.SHARE_COUNT[self._share_id].remove(self._editor)
+            # There are still editors using this backend, don't close
+            if BackendManager.SHARE_COUNT[self._share_id]:
                 return
         comm('stopping backend process')
         # close all sockets
