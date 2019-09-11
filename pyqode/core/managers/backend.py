@@ -155,7 +155,16 @@ class BackendManager(Manager):
         # prevent crash logs from being written if we are busy killing
         # the process
         self._process._prevent_logs = True
-        while self._process.state() != self._process.NotRunning:
+        while True:
+            try:
+                running = self._process.state() != self._process.NotRunning
+            except RuntimeError:
+                # Under some (hard to reprooduce) conditions, the underlying
+                # process object is already deleted at this pont, resulting
+                # in a RuntimeError.
+                break
+            if not running:
+                break
             self._process.waitForFinished(1)
             if sys.platform == 'win32':
                 # Console applications on Windows that do not run an event
