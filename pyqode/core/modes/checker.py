@@ -56,14 +56,14 @@ class CheckerMessage(object):
         """
         return self.status_to_string(self.status)
 
-    def __init__(self, description, status, line, col=None, icon=None,
+    def __init__(self, description, status, line, text_range=None, icon=None,
                  color=None, path=None):
         """
         :param description: The message description (used as a tooltip)
         :param status: The status associated with the message.
         :param line: The message line number
-        :param col: The message start column (at the moment the message ends at
-                    the end of the line).
+        :param text_range: The start and end range of the text. If specified,
+            this overrides the line for the text highlighting.
         :param icon: Unused, we keep it for backward compatiblity.
         :param color: Text decoration color
         :param path: file path. Optional
@@ -80,7 +80,7 @@ class CheckerMessage(object):
         self.line = line
         #: The start column (used for the text decoration). If the col is None,
         #: the whole line is highlighted.
-        self.col = col
+        self.text_range = text_range
         #: The color used for the text decoration. If None, the default color
         #: is used (:const:`pyqode.core.CheckerMessage.COLORS`)
         self.color = color
@@ -241,10 +241,22 @@ class CheckerMode(Mode, QtCore.QObject):
                 tooltip = None
                 if self._show_tooltip:
                     tooltip = message.description
-                message.decoration = TextDecoration(
-                    self.editor.textCursor(), start_line=message.line,
-                    tooltip=tooltip, draw_order=3)
-                message.decoration.set_full_width()
+                if message.text_range is not None:
+                    message.decoration = TextDecoration(
+                        self.editor.textCursor(),
+                        start_pos=message.text_range[0],
+                        end_pos=message.text_range[1],
+                        tooltip=tooltip,
+                        draw_order=3
+                    )
+                else:
+                    message.decoration = TextDecoration(
+                        self.editor.textCursor(),
+                        start_line=message.line,
+                        tooltip=tooltip,
+                        draw_order=3
+                    )
+                    message.decoration.set_full_width()
                 message.decoration.set_as_error(color=QtGui.QColor(
                     message.color))
                 self.editor.decorations.append(message.decoration)
