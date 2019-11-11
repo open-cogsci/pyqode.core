@@ -24,6 +24,7 @@ from .right_margin import RightMarginMode
 from .pygments_sh import PygmentsSH
 from .wordclick import WordClickMode
 from .zoom import ZoomMode
+from .spellchecker_mode import SpellCheckerMode
 # for backward compatibility
 from ..api.syntax_highlighter import PYGMENTS_STYLES
 from .pygments_sh import PygmentsSH as PygmentsSyntaxHighlighter
